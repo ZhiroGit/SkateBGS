@@ -31,6 +31,16 @@ protected:
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
 
+	void MoveTrigger(const FInputActionValue& Value);
+
+	void ReleaseTrigger();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float ForwardAxis;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float RightAxis;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -67,4 +77,11 @@ public:
 	///////////////////////////////////////////
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* SkateMesh;
+
+private:
+	bool bIsHoldingMoveAxis = false;
+	float ForwardScaleValue;
+	float RightScaleValue;
+
+	void AlignSkate();
 };

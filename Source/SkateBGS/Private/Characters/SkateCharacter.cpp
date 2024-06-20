@@ -34,6 +34,9 @@ ASkateCharacter::ASkateCharacter()
 	SkateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SkateMesh"));
 	SkateMesh->SetupAttachment(RootComponent);
 
+	bUseControllerRotationYaw = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+
 }
 
 // Called when the game starts or when spawned
@@ -52,29 +55,6 @@ void ASkateCharacter::BeginPlay()
 	
 }
 
-void ASkateCharacter::Move(const FInputActionValue& Value)
-{
-	// input is a Vector2D
-	FVector2D MovementVector = Value.Get<FVector2D>();
-
-	if (Controller != nullptr)
-	{
-		// find out which way is forward
-		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-
-		// add movement 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
-	}
-}
-
 void ASkateCharacter::Look(const FInputActionValue& Value)
 {
 	//Code From the default Unreal Character
@@ -90,11 +70,56 @@ void ASkateCharacter::Look(const FInputActionValue& Value)
 	///////////////////////////////////////////
 }
 
+void ASkateCharacter::Move(const FInputActionValue& Value)
+{
+	// input is a Vector2D
+	FVector2D MovementVector = Value.Get<FVector2D>();
+	ForwardAxis = MovementVector.Y;
+	RightAxis = MovementVector.X;
+
+	if (Controller != nullptr)
+	{
+		// find out which way is forward
+		const FRotator Rotation = Controller->GetControlRotation();
+		const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+		// get forward vector
+		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+
+		// get right vector 
+		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+		// add movement
+		ForwardScaleValue = FMath::Lerp(ForwardScaleValue, MovementVector.Y, 0.01f);
+
+		RightScaleValue = FMath::Lerp(RightScaleValue, MovementVector.X, 0.02f);
+		if (GetVelocity().Size() > 35.f || bIsHoldingMoveAxis)
+		{
+			AddMovementInput(ForwardDirection, ForwardScaleValue);
+			AddMovementInput(RightDirection, RightScaleValue);
+		}
+	}
+}
+
+void ASkateCharacter::MoveTrigger(const FInputActionValue& Value)
+{
+	bIsHoldingMoveAxis = true;
+	Move(Value);
+}
+
+void ASkateCharacter::ReleaseTrigger()
+{
+	bIsHoldingMoveAxis = false;
+}
+
 // Called every frame
 void ASkateCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
+	if (!bIsHoldingMoveAxis)
+	{
+		Move(FVector2D(0.f, 0.f));
+	}
 }
 
 // Called to bind functionality to input
@@ -110,12 +135,24 @@ void ASkateCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
 		// Moving
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateCharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateCharacter::MoveTrigger);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ASkateCharacter::ReleaseTrigger);
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASkateCharacter::Look);
 	}
 	//////////////////////////////////////////////////////////////
+
+}
+
+void ASkateCharacter::AlignSkate()
+{
+	const FVector ForwardLocation = SkateMesh->GetSocketLocation(FName("ForwardSocket"));
+	const FVector ForwardStart = ForwardLocation + FVector(0.f, 0.f, 30.f);
+	const FVector ForwardEnd = ForwardLocation - FVector(0.f, 0.f, 30.f);
+
+	const FVector BackwardLocation = SkateMesh->GetSocketLocation(FName("BackwardSocket"));
+
 
 }
 
