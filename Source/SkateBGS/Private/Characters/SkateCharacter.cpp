@@ -10,6 +10,8 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
 
 // Sets default values
 ASkateCharacter::ASkateCharacter()
@@ -35,7 +37,7 @@ ASkateCharacter::ASkateCharacter()
 	SkateMesh->SetupAttachment(RootComponent);
 
 	bUseControllerRotationYaw = false;
-	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bOrientRotationToMovement = false;
 
 }
 
@@ -90,14 +92,15 @@ void ASkateCharacter::Move(const FInputActionValue& Value)
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
 		// add movement
-		ForwardScaleValue = FMath::Lerp(ForwardScaleValue, MovementVector.Y, 0.01f);
+		const float ZForward = FMath::Clamp(SkateMesh->GetForwardVector().Z * 3, -0.7f, 0.7f);
+		ForwardScaleValue = FMath::Lerp(ForwardScaleValue, MovementVector.Y - ZForward, Friction);
+		AddMovementInput(GetActorForwardVector(), ForwardScaleValue);
+		//RightScaleValue = FMath::Lerp(RightScaleValue, MovementVector.X, 0.02f);
 
-		RightScaleValue = FMath::Lerp(RightScaleValue, MovementVector.X, 0.02f);
-		if (GetVelocity().Size() > 35.f || bIsHoldingMoveAxis)
-		{
-			AddMovementInput(ForwardDirection, ForwardScaleValue);
-			AddMovementInput(RightDirection, RightScaleValue);
-		}
+		//add rotation
+		const float TurnPercent = TurnRate / GetCharacterMovement()->MaxWalkSpeed;
+		float NewYawRotation = MovementVector.X * (GetVelocity().Size() * TurnPercent);
+		AddActorWorldRotation(FRotator(0.f, NewYawRotation, 0.f));
 	}
 }
 
@@ -112,6 +115,15 @@ void ASkateCharacter::ReleaseTrigger()
 	bIsHoldingMoveAxis = false;
 }
 
+void ASkateCharacter::GetFootSockets(FVector& FrontFoot, FVector& BackFoot)
+{
+	if (SkateMesh)
+	{
+		FrontFoot = SkateMesh->GetSocketLocation("FrontFootSocket");
+		BackFoot = SkateMesh->GetSocketLocation("BackFootSocket");
+	}
+}
+
 // Called every frame
 void ASkateCharacter::Tick(float DeltaTime)
 {
@@ -120,6 +132,7 @@ void ASkateCharacter::Tick(float DeltaTime)
 	{
 		Move(FVector2D(0.f, 0.f));
 	}
+	AlignSkate();
 }
 
 // Called to bind functionality to input
@@ -147,12 +160,40 @@ void ASkateCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void ASkateCharacter::AlignSkate()
 {
-	const FVector ForwardLocation = SkateMesh->GetSocketLocation(FName("ForwardSocket"));
-	const FVector ForwardStart = ForwardLocation + FVector(0.f, 0.f, 30.f);
-	const FVector ForwardEnd = ForwardLocation - FVector(0.f, 0.f, 30.f);
+	if (SkateMesh)
+	{
+		//Trace the floor to align Vertical Skate orientation
+		const FVector ForwardLocation = TraceFloor(SkateMesh->GetSocketLocation(FName("ForwardSocket")));
+		const FVector BackwardLocation = TraceFloor(SkateMesh->GetSocketLocation(FName("BackwardSocket")));
+		const FRotator NewRotationV = UKismetMathLibrary::FindLookAtRotation(BackwardLocation, ForwardLocation);
 
-	const FVector BackwardLocation = SkateMesh->GetSocketLocation(FName("BackwardSocket"));
+		//Trace the floor to align Horizontal Skate orientation
+		const FVector LeftLocation = TraceFloor(SkateMesh->GetSocketLocation(FName("LeftWheel")));
+		const FVector RightLocation = TraceFloor(SkateMesh->GetSocketLocation(FName("RightWheel")));
+		const FRotator NewRotationH = UKismetMathLibrary::FindLookAtRotation(RightLocation, LeftLocation);
 
+		const FRotator NewRotation(NewRotationV.Pitch, NewRotationV.Yaw, NewRotationH.Pitch);
+		FRotator TargetRotation = FMath::RInterpTo(SkateMesh->GetComponentRotation(), NewRotation, GetWorld()->GetDeltaSeconds(), 20.f);
+		SkateMesh->SetWorldRotation(TargetRotation);
 
+	}
+}
+
+FVector ASkateCharacter::TraceFloor(const FVector Origin)
+{
+	const FVector TraceStart = Origin;
+	const FVector TraceEnd = Origin - FVector(0.f, 0.f, 50.f);
+
+	FHitResult HitResult;
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+	UKismetSystemLibrary::LineTraceSingle(GetWorld(), TraceStart, TraceEnd, TraceTypeQuery1,
+		false, ActorsToIgnore, EDrawDebugTrace::None, HitResult, true);
+
+	if (HitResult.bBlockingHit)
+	{
+		return HitResult.Location;
+	}
+	return Origin;
 }
 

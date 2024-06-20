@@ -35,11 +35,23 @@ protected:
 
 	void ReleaseTrigger();
 
+	UFUNCTION(BlueprintPure)
+	void GetFootSockets(FVector &FrontFoot, FVector &BackFoot);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	float ForwardAxis;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	float RightAxis;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
+	float TurnRate = 1.5f;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
+	float Friction = 0.01f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
+	float ForwardScaleValue;
 
 public:	
 	// Called every frame
@@ -80,8 +92,8 @@ public:
 
 private:
 	bool bIsHoldingMoveAxis = false;
-	float ForwardScaleValue;
 	float RightScaleValue;
 
 	void AlignSkate();
+	FVector TraceFloor(const FVector Origin);
 };
