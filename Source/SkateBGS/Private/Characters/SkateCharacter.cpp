@@ -36,8 +36,12 @@ ASkateCharacter::ASkateCharacter()
 	SkateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SkateMesh"));
 	SkateMesh->SetupAttachment(RootComponent);
 
-	bUseControllerRotationYaw = false;
-	GetCharacterMovement()->bOrientRotationToMovement = false;
+	if (GetCharacterMovement())
+	{
+		bUseControllerRotationYaw = false;
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+		GetCharacterMovement()->MaxWalkSpeed = RegularSpeed;
+	}
 
 }
 
@@ -78,28 +82,28 @@ void ASkateCharacter::Move(const FInputActionValue& Value)
 	FVector2D MovementVector = Value.Get<FVector2D>();
 	ForwardAxis = MovementVector.Y;
 	RightAxis = MovementVector.X;
+	MovementVector.Y = FMath::Clamp(MovementVector.Y, 0, 1);
+	const float CurrenSpeed = GetVelocity().Size();
 
 	if (Controller != nullptr)
 	{
-		// find out which way is forward
-		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		//get deceleration sacale
+		float DecelerationScale = 1.f;
+		if (CurrenSpeed > 400.f && ForwardAxis == 0)
+		{
+			float DecMultiplier = CurrenSpeed >= RegularSpeed + 100.f ? CurrenSpeed/30.f : 1.f;
+			DecelerationScale /= DecelerationRate * DecMultiplier;
+		}
 
 		// add movement
-		const float ZForward = FMath::Clamp(SkateMesh->GetForwardVector().Z * 3, -0.7f, 0.7f);
-		ForwardScaleValue = FMath::Lerp(ForwardScaleValue, MovementVector.Y - ZForward, Friction);
+		const float ZForward = FMath::Clamp(SkateMesh->GetForwardVector().Z * 3, -0.8f, 0.8f);
+		ForwardScaleValue = FMath::Lerp(ForwardScaleValue, MovementVector.Y - ZForward, Friction * DecelerationScale);
 		AddMovementInput(GetActorForwardVector(), ForwardScaleValue);
 		//RightScaleValue = FMath::Lerp(RightScaleValue, MovementVector.X, 0.02f);
 
 		//add rotation
 		const float TurnPercent = TurnRate / GetCharacterMovement()->MaxWalkSpeed;
-		float NewYawRotation = MovementVector.X * (GetVelocity().Size() * TurnPercent);
+		const float NewYawRotation = MovementVector.X * (CurrenSpeed * TurnPercent);
 		AddActorWorldRotation(FRotator(0.f, NewYawRotation, 0.f));
 	}
 }
@@ -124,6 +128,32 @@ void ASkateCharacter::GetFootSockets(FVector& FrontFoot, FVector& BackFoot)
 	}
 }
 
+void ASkateCharacter::SpeedUp()
+{
+	if (GetCharacterMovement() && ForwardAxis > 0)
+	{
+		bIsSpeedingUp = true;
+		if (GetVelocity().Size() > RegularSpeed - 100.f)
+		{
+			ForwardScaleValue -= 0.25f;
+		}
+		GetCharacterMovement()->MaxWalkSpeed = MaxSpeed;
+	}
+}
+
+void ASkateCharacter::SlowDown()
+{
+	if (GetCharacterMovement())
+	{
+		bIsSpeedingUp = false;
+	}
+}
+
+void ASkateCharacter::ResetSpeedUp()
+{
+	bCanSpeedUp = true;
+}
+
 // Called every frame
 void ASkateCharacter::Tick(float DeltaTime)
 {
@@ -133,6 +163,15 @@ void ASkateCharacter::Tick(float DeltaTime)
 		Move(FVector2D(0.f, 0.f));
 	}
 	AlignSkate();
+
+	if (GetVelocity().Size() > RegularSpeed && !bIsSpeedingUp)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(GetCharacterMovement()->MaxWalkSpeed, RegularSpeed, Friction / DecelerationRate);
+	}
+	if (GetVelocity().Size() < RegularSpeed - 100 && GetCharacterMovement()->MaxWalkSpeed > RegularSpeed && !bIsSpeedingUp)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = RegularSpeed;
+	}
 }
 
 // Called to bind functionality to input
@@ -146,6 +185,10 @@ void ASkateCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+
+		// SpeedUp
+		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Started, this, &ASkateCharacter::SpeedUp);
+		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Completed, this, &ASkateCharacter::SlowDown);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateCharacter::MoveTrigger);

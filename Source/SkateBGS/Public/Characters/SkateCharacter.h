@@ -35,6 +35,13 @@ protected:
 
 	void ReleaseTrigger();
 
+	void SlowDown();
+
+	UFUNCTION(BlueprintCallable)
+	void ResetSpeedUp();
+
+	void SpeedUp();
+
 	UFUNCTION(BlueprintPure)
 	void GetFootSockets(FVector &FrontFoot, FVector &BackFoot);
 
@@ -45,13 +52,25 @@ protected:
 	float RightAxis;
 
 	UPROPERTY(EditAnywhere, category = "Movement")
+	float RegularSpeed = 900.f;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
+	float MaxSpeed = 1200.f;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
 	float TurnRate = 1.5f;
 
 	UPROPERTY(EditAnywhere, category = "Movement")
 	float Friction = 0.01f;
 
+	UPROPERTY(EditAnywhere, category = "Movement")
+	float DecelerationRate = 5.f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
 	float ForwardScaleValue;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
+	bool bIsSpeedingUp = false;
 
 public:	
 	// Called every frame
@@ -78,6 +97,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* JumpAction;
 
+	/** Jump Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* SpeedAction;
+
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
@@ -92,6 +115,7 @@ public:
 
 private:
 	bool bIsHoldingMoveAxis = false;
+	bool bCanSpeedUp = true;
 	float RightScaleValue;
 
 	void AlignSkate();
