@@ -33,6 +33,8 @@ protected:
 
 	void MoveTrigger(const FInputActionValue& Value);
 
+	void MovePhysics(const FInputActionValue& Value);
+
 	void ReleaseTrigger();
 
 	void SlowDown();
@@ -63,6 +65,12 @@ protected:
 	float MaxSpeed = 1200.f;
 
 	UPROPERTY(EditAnywhere, category = "Movement")
+	float MaxStamina = 100.f;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
+	float StaminaDrainRate = 1.f;
+
+	UPROPERTY(EditAnywhere, category = "Movement")
 	float TurnRate = 1.5f;
 
 	UPROPERTY(EditAnywhere, category = "Movement")
@@ -77,8 +85,25 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
 	bool bIsSpeedingUp = false;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
+	float Stamina = 100.f;
+
 	UPROPERTY(EditAnywhere, category = "Animations")
 	UAnimMontage* JumpMontage;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class UCharacterUI> HUDClass;
+
+	UCharacterUI* HUD;
+
+	UPROPERTY(EditAnywhere, category = "Time")
+	int32 Minutes = 1.f;
+
+	UPROPERTY(EditAnywhere, category = "Time")
+	int32 Seconds = 59.f;
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void CallResetMenu();
 
 public:	
 	// Called every frame
@@ -121,15 +146,39 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* SkateMesh;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UStaticMeshComponent* Sphere;
+
+	void CollectRing();
+
 private:
 	bool bIsHoldingMoveAxis = false;
 	bool bIsHoldingSpeed = false;
 	bool bCanFlipSkate = false;
 	float RightScaleValue;
 	float GetDecelerationScale(float CurrentSpeed);
+	FVector FloorNormal = FVector(0.f, 0.f, 1.f);
 
 	void AlignSkate();
 	FVector TraceFloor(const FVector Origin);
 	void SpeedTrigger();
 	void FlipSkate();
+
+	FVector GetSimulatedVelocity();
+	FVector GetFloorNormal(const FVector Origin);
+	void SetPhysicsMovement();
+
+	void UpdateCamera(const float& Speed);
+	float CameraFOV = 90.f;
+	float ArmLength = 300.f;
+
+	FTimerHandle StaminaDrainTimer;
+	FTimerHandle StaminaRegenTimer;
+	FTimerHandle TimerHandle;
+	void DrainStamina();
+	void RegenStamina();
+
+	int32 RingCounter = 0;
+	void CountDown();
+	void StopAllActions();
 };

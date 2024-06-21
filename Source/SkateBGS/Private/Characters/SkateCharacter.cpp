@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "UI/CharacterUI.h"
 
 // Sets default values
 ASkateCharacter::ASkateCharacter()
@@ -36,6 +37,13 @@ ASkateCharacter::ASkateCharacter()
 	SkateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SkateMesh"));
 	SkateMesh->SetupAttachment(RootComponent);
 
+	//Sphere = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Sphere"));
+	//Sphere->SetupAttachment(RootComponent);
+	//Sphere->SetHiddenInGame(true);
+	//Sphere->SetSimulatePhysics(true);
+	//Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	//Sphere->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+
 	if (GetCharacterMovement())
 	{
 		bUseControllerRotationYaw = false;
@@ -58,7 +66,105 @@ void ASkateCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
+
+	Stamina = MaxStamina;
+
+	if (GetWorld())
+	{
+		APlayerController* Controller2 = GetWorld()->GetFirstPlayerController();
+		if (Controller2 && HUDClass)
+		{
+			HUD = CreateWidget<UCharacterUI>(Controller2, HUDClass);
+			HUD->AddToViewport();
+			HUD->UpdateRingCount(RingCounter);
+		}
+	}
+	GetWorldTimerManager().SetTimer(TimerHandle, this, &ASkateCharacter::CountDown, 1.f, true, 0.f);
 	
+}
+
+// Called every frame
+void ASkateCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	//SetPhysicsMovement();
+	if (!bIsHoldingMoveAxis)
+	{
+		Move(FVector2D(0.f, 0.f));
+		//MovePhysics(FVector2D(0.f, 0.f));
+	}
+
+	if (bCanFlipSkate)
+	{
+		FlipSkate();
+	}
+
+	if (GetCharacterMovement())
+	{
+		const float Speed = GetVelocity().Size();
+
+		UpdateCamera(Speed);
+
+		if (!GetCharacterMovement()->IsFalling())
+		{
+			AlignSkate();
+		}
+
+		if (Speed > RegularSpeed && !bIsSpeedingUp)
+		{
+			GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(GetCharacterMovement()->MaxWalkSpeed, RegularSpeed, Friction / DecelerationRate);
+		}
+		if (Speed < RegularSpeed - 100 && GetCharacterMovement()->MaxWalkSpeed > RegularSpeed && !bIsSpeedingUp)
+		{
+			GetCharacterMovement()->MaxWalkSpeed = RegularSpeed;
+		}
+	}
+}
+
+void ASkateCharacter::CountDown()
+{
+	if (Seconds != 0)
+	{
+		Seconds -= 1;
+	}
+	else
+	{
+		if (Minutes == 0)
+		{
+			StopAllActions();
+			CallResetMenu();
+		}
+		else
+		{
+			Minutes -= 1;
+			Seconds = 59;
+		}
+	}
+
+	HUD->UpdateTimer(Minutes, Seconds);
+
+}
+
+void ASkateCharacter::StopAllActions()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle);
+	ForwardAxis = 0.f;
+	RightAxis = 0.f;
+	SlowDown();
+}
+
+void ASkateCharacter::UpdateCamera(const float& Speed)
+{
+	if (!GetCharacterMovement()->IsFalling())
+	{
+		float FOV = FMath::Clamp(Speed / 11.f, 90.f, 105.f);
+		CameraFOV = FMath::Lerp(CameraFOV, FOV, 0.05f);
+		FollowCamera->SetFieldOfView(CameraFOV);
+
+		float Length = FMath::Clamp(Speed / 3.5f, 300.f, 325.f);
+		ArmLength = FMath::Lerp(ArmLength, Length, 0.05f);
+		CameraBoom->TargetArmLength = ArmLength;
+	}
 }
 
 void ASkateCharacter::Look(const FInputActionValue& Value)
@@ -105,6 +211,30 @@ void ASkateCharacter::Move(const FInputActionValue& Value)
 	}
 }
 
+void ASkateCharacter::MovePhysics(const FInputActionValue& Value)
+{
+	FVector2D MovementVector = Value.Get<FVector2D>();
+	ForwardAxis = MovementVector.Y;
+	RightAxis = MovementVector.X;
+	MovementVector.Y = FMath::Clamp(MovementVector.Y, 0, 1);
+	const float CurrentSpeed = GetVelocity().Size();
+
+	Sphere->AddForce(GetActorForwardVector() * RegularSpeed * 110.f * MovementVector.Y);
+
+	float RotationSpeed = RegularSpeed * 1100.f * TurnRate * MovementVector.X;
+	Sphere->AddForce(GetActorRightVector() * RotationSpeed);
+}
+
+void ASkateCharacter::MoveTrigger(const FInputActionValue& Value)
+{
+	bIsHoldingMoveAxis = true;
+	if (bIsHoldingSpeed)
+	{
+		SpeedUp();
+	}
+	Move(Value);
+	//MovePhysics(Value);
+}
 
 float ASkateCharacter::GetDecelerationScale(float CurrentSpeed)
 {
@@ -116,16 +246,6 @@ float ASkateCharacter::GetDecelerationScale(float CurrentSpeed)
 		return DecelerationScale;
 	}
 	return 1.f;
-}
-
-void ASkateCharacter::MoveTrigger(const FInputActionValue& Value)
-{
-	bIsHoldingMoveAxis = true;
-	if (bIsHoldingSpeed)
-	{
-		SpeedUp();
-	}
-	Move(Value);
 }
 
 void ASkateCharacter::ReleaseTrigger()
@@ -144,8 +264,11 @@ void ASkateCharacter::GetFootSockets(FVector& FrontFoot, FVector& BackFoot)
 
 void ASkateCharacter::SpeedTrigger()
 {
-	bIsHoldingSpeed = true;
-	SpeedUp();
+	if (Stamina > MaxStamina / 6.f)
+	{
+		bIsHoldingSpeed = true;
+		SpeedUp();
+	}
 }
 
 void ASkateCharacter::SpeedUp()
@@ -159,7 +282,45 @@ void ASkateCharacter::SpeedUp()
 			ForwardScaleValue -= 0.25f;
 		}
 		GetCharacterMovement()->MaxWalkSpeed = MaxSpeed;
+
+		if (GetWorldTimerManager().IsTimerActive(StaminaRegenTimer))
+		{
+			GetWorldTimerManager().ClearTimer(StaminaRegenTimer);
+		}
+		GetWorldTimerManager().SetTimer(StaminaDrainTimer, this, &ASkateCharacter::DrainStamina, 0.016f, true, 0.f);
 	}
+}
+
+void ASkateCharacter::SlowDown()
+{
+	bIsSpeedingUp = false;
+	bIsHoldingSpeed = false;
+
+	if (GetWorldTimerManager().IsTimerActive(StaminaDrainTimer))
+	{
+		GetWorldTimerManager().ClearTimer(StaminaDrainTimer);
+	}
+
+	GetWorldTimerManager().SetTimer(StaminaRegenTimer, this, &ASkateCharacter::RegenStamina, 0.016f, true, 0.f);
+}
+
+void ASkateCharacter::DrainStamina()
+{
+	Stamina = FMath::Clamp(Stamina - StaminaDrainRate, 0.f, MaxStamina);
+	if (HUD)
+	{
+		HUD->SetStaminaPercent(Stamina / MaxStamina);
+	}
+	if (Stamina <= 0.f)
+	{
+		SlowDown();
+	}
+}
+
+void ASkateCharacter::RegenStamina()
+{
+	Stamina = FMath::Clamp(Stamina + StaminaDrainRate / 2, 0.f, MaxStamina);
+	HUD->SetStaminaPercent(Stamina / MaxStamina);
 }
 
 void ASkateCharacter::StartJump()
@@ -171,6 +332,15 @@ void ASkateCharacter::StartJump()
 	}
 }
 
+void ASkateCharacter::CollectRing()
+{
+	if (HUD)
+	{
+		RingCounter += 1;
+		HUD->UpdateRingCount(RingCounter);
+	}
+}
+
 void ASkateCharacter::EndJump()
 {
 	bCanFlipSkate = false;
@@ -178,12 +348,6 @@ void ASkateCharacter::EndJump()
 	{
 		SkateMesh->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
 	}
-}
-
-void ASkateCharacter::SlowDown()
-{
-	bIsSpeedingUp = false;
-	bIsHoldingSpeed = false;
 }
 
 void ASkateCharacter::Jump()
@@ -204,65 +368,6 @@ void ASkateCharacter::FlipSkate()
 	{
 		SkateMesh->AddLocalRotation(FRotator(0.f, 0.f, 20.f));
 	}
-}
-
-// Called every frame
-void ASkateCharacter::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-	if (!bIsHoldingMoveAxis)
-	{
-		Move(FVector2D(0.f, 0.f));
-	}
-
-	if (bCanFlipSkate)
-	{
-		FlipSkate();
-	}
-
-	if (GetCharacterMovement())
-	{
-		if (!GetCharacterMovement()->IsFalling())
-		{
-			AlignSkate();
-		}
-
-		if (GetVelocity().Size() > RegularSpeed && !bIsSpeedingUp)
-		{
-			GetCharacterMovement()->MaxWalkSpeed = FMath::Lerp(GetCharacterMovement()->MaxWalkSpeed, RegularSpeed, Friction / DecelerationRate);
-		}
-		if (GetVelocity().Size() < RegularSpeed - 100 && GetCharacterMovement()->MaxWalkSpeed > RegularSpeed && !bIsSpeedingUp)
-		{
-			GetCharacterMovement()->MaxWalkSpeed = RegularSpeed;
-		}
-	}
-}
-
-// Called to bind functionality to input
-void ASkateCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	//Code From the default Unreal Character
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ASkateCharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-
-		// SpeedUp
-		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Started, this, &ASkateCharacter::SpeedTrigger);
-		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Completed, this, &ASkateCharacter::SlowDown);
-
-		// Moving
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateCharacter::MoveTrigger);
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ASkateCharacter::ReleaseTrigger);
-
-		// Looking
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASkateCharacter::Look);
-	}
-	//////////////////////////////////////////////////////////////
-
 }
 
 void ASkateCharacter::AlignSkate()
@@ -302,4 +407,79 @@ FVector ASkateCharacter::TraceFloor(const FVector Origin)
 		return HitResult.Location;
 	}
 	return Origin;
+}
+
+FVector ASkateCharacter::GetSimulatedVelocity()
+{
+	if (!Sphere) return FVector(0.f, 0.f, 0.f);
+
+	return Sphere->GetPhysicsLinearVelocity();
+}
+
+FVector ASkateCharacter::GetFloorNormal(const FVector Origin)
+{
+	const FVector TraceStart = Origin;
+	const FVector TraceEnd = Origin - FVector(0.f, 0.f, 100.f);
+
+	FHitResult HitResult;
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+	UKismetSystemLibrary::LineTraceSingle(GetWorld(), TraceStart, TraceEnd, TraceTypeQuery1,
+		false, ActorsToIgnore, EDrawDebugTrace::ForOneFrame, HitResult, true);
+
+	if (HitResult.bBlockingHit)
+	{
+		return HitResult.Normal;
+	}
+	return FVector(0.f, 0.f, 1.f);
+}
+
+void ASkateCharacter::SetPhysicsMovement()
+{
+	if (Sphere && SkateMesh)
+	{
+		SetActorLocation(Sphere->GetComponentLocation(), false, nullptr, ETeleportType::TeleportPhysics);
+		const FVector ForwardNormal = GetFloorNormal(SkateMesh->GetSocketLocation(FName("ForwardSocket")));
+
+		FloorNormal = UKismetMathLibrary::VLerp(FloorNormal, ForwardNormal, 0.04f);
+
+		if (GetSimulatedVelocity().Size() > 5.f)
+		{
+			const FVector Velocity = GetSimulatedVelocity();
+			const float Speed = GetSimulatedVelocity().Size();
+			const FVector RightVector = UKismetMathLibrary::RotateAngleAxis(Velocity, 90.f, FloorNormal);
+
+			FRotator RotationFromAxes = UKismetMathLibrary::MakeRotationFromAxes(Velocity, RightVector, FloorNormal);
+
+			FRotator NewRotation = UKismetMathLibrary::RLerp(GetActorRotation(), RotationFromAxes, 0.1f, true);
+			SetActorRotation(NewRotation);
+		}
+	}
+}
+
+// Called to bind functionality to input
+void ASkateCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	//Code From the default Unreal Character
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	// Set up action bindings
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
+
+		// Jumping
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ASkateCharacter::Jump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+
+		// SpeedUp
+		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Started, this, &ASkateCharacter::SpeedTrigger);
+		EnhancedInputComponent->BindAction(SpeedAction, ETriggerEvent::Completed, this, &ASkateCharacter::SlowDown);
+
+		// Moving
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateCharacter::MoveTrigger);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ASkateCharacter::ReleaseTrigger);
+
+		// Looking
+		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASkateCharacter::Look);
+	}
+	//////////////////////////////////////////////////////////////
+
 }
