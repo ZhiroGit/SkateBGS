@@ -37,10 +37,15 @@ protected:
 
 	void SlowDown();
 
-	UFUNCTION(BlueprintCallable)
-	void ResetSpeedUp();
+	virtual void Jump() override;
 
 	void SpeedUp();
+
+	UFUNCTION(BlueprintCallable)
+	void StartJump();
+
+	UFUNCTION(BlueprintCallable)
+	void EndJump();
 
 	UFUNCTION(BlueprintPure)
 	void GetFootSockets(FVector &FrontFoot, FVector &BackFoot);
@@ -71,6 +76,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, category = "Movement")
 	bool bIsSpeedingUp = false;
+
+	UPROPERTY(EditAnywhere, category = "Animations")
+	UAnimMontage* JumpMontage;
 
 public:	
 	// Called every frame
@@ -115,9 +123,13 @@ public:
 
 private:
 	bool bIsHoldingMoveAxis = false;
-	bool bCanSpeedUp = true;
+	bool bIsHoldingSpeed = false;
+	bool bCanFlipSkate = false;
 	float RightScaleValue;
+	float GetDecelerationScale(float CurrentSpeed);
 
 	void AlignSkate();
 	FVector TraceFloor(const FVector Origin);
+	void SpeedTrigger();
+	void FlipSkate();
 };
