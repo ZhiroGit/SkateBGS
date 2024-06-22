@@ -25,6 +25,9 @@ ARing::ARing()
 	VFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Niagara Effect"));
 	VFX->SetupAttachment(GetRootComponent());
 
+	OnMaterial = CreateDefaultSubobject<UMaterialInstance>(TEXT("On Material"));
+	OffMaterial = CreateDefaultSubobject<UMaterialInstance>(TEXT("Off Material"));
+
 }
 
 // Called when the game starts or when spawned
@@ -80,5 +83,31 @@ void ARing::Tick(float DeltaTime)
 	const float Z = TransformedSin();
 	AddActorWorldOffset(FVector(0.f, 0.f, Z));
 
+}
+
+void ARing::SetRingInactive()
+{
+	if (Mesh)
+	{
+		Mesh->SetMaterial(0, OffMaterial);
+	}
+
+	if (Sphere)
+	{
+		Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+}
+
+void ARing::SetRingActive()
+{
+	if (Mesh)
+	{
+		Mesh->SetMaterial(0, OnMaterial);
+	}
+
+	if (Sphere)
+	{
+		Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+	}
 }
 

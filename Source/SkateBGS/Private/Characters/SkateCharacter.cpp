@@ -13,6 +13,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "UI/CharacterUI.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 ASkateCharacter::ASkateCharacter()
@@ -49,6 +50,10 @@ ASkateCharacter::ASkateCharacter()
 		bUseControllerRotationYaw = false;
 		GetCharacterMovement()->bOrientRotationToMovement = false;
 		GetCharacterMovement()->MaxWalkSpeed = RegularSpeed;
+	}
+	if (GetMesh())
+	{
+		GetMesh()->SetCollisionProfileName(FName("Ragdoll"));
 	}
 
 }
@@ -88,6 +93,8 @@ void ASkateCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	//SetPhysicsMovement();
+
+	TraceCollision();
 	if (!bIsHoldingMoveAxis)
 	{
 		Move(FVector2D(0.f, 0.f));
@@ -206,23 +213,9 @@ void ASkateCharacter::Move(const FInputActionValue& Value)
 
 		//add rotation
 		const float TurnPercent = TurnRate / GetCharacterMovement()->MaxWalkSpeed;
-		const float NewYawRotation = MovementVector.X * (CurrentSpeed * TurnPercent);
+		const float NewYawRotation = MovementVector.X * FMath::Clamp(CurrentSpeed * TurnPercent, 0.25f, 1000000000.f);
 		AddActorWorldRotation(FRotator(0.f, NewYawRotation, 0.f));
 	}
-}
-
-void ASkateCharacter::MovePhysics(const FInputActionValue& Value)
-{
-	FVector2D MovementVector = Value.Get<FVector2D>();
-	ForwardAxis = MovementVector.Y;
-	RightAxis = MovementVector.X;
-	MovementVector.Y = FMath::Clamp(MovementVector.Y, 0, 1);
-	const float CurrentSpeed = GetVelocity().Size();
-
-	Sphere->AddForce(GetActorForwardVector() * RegularSpeed * 110.f * MovementVector.Y);
-
-	float RotationSpeed = RegularSpeed * 1100.f * TurnRate * MovementVector.X;
-	Sphere->AddForce(GetActorRightVector() * RotationSpeed);
 }
 
 void ASkateCharacter::MoveTrigger(const FInputActionValue& Value)
@@ -277,9 +270,9 @@ void ASkateCharacter::SpeedUp()
 	{
 		bIsSpeedingUp = true;
 		bIsHoldingSpeed = false;
-		if (GetVelocity().Size() > RegularSpeed - 100.f)
+		if (GetVelocity().Size() < RegularSpeed && ForwardScaleValue > .9f)
 		{
-			ForwardScaleValue -= 0.25f;
+			ForwardScaleValue -= 0.2f;
 		}
 		GetCharacterMovement()->MaxWalkSpeed = MaxSpeed;
 
@@ -339,6 +332,14 @@ void ASkateCharacter::CollectRing()
 		RingCounter += 1;
 		HUD->UpdateRingCount(RingCounter);
 	}
+
+	if (RingCounter >= 33)
+	{
+		GetWorldTimerManager().ClearTimer(TimerHandle);
+		ShowVictoryScreen();
+		bHasWon = true;
+	}
+	RingCollected.Broadcast();
 }
 
 void ASkateCharacter::EndJump()
@@ -393,7 +394,7 @@ void ASkateCharacter::AlignSkate()
 
 FVector ASkateCharacter::TraceFloor(const FVector Origin)
 {
-	const FVector TraceStart = Origin;
+	const FVector TraceStart = Origin + FVector(0.f, 0.f, 20.f);
 	const FVector TraceEnd = Origin - FVector(0.f, 0.f, 50.f);
 
 	FHitResult HitResult;
@@ -407,6 +408,59 @@ FVector ASkateCharacter::TraceFloor(const FVector Origin)
 		return HitResult.Location;
 	}
 	return Origin;
+}
+
+void ASkateCharacter::TraceCollision()
+{
+	FVector TraceStart = GetActorLocation();
+	FVector TraceEnd = GetActorForwardVector() * 35.f;
+	TraceEnd += TraceStart;
+
+	FHitResult HitResult;
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+	UKismetSystemLibrary::BoxTraceSingle(GetWorld(), TraceStart, TraceEnd, FVector(0.f, 20.f, 60.f), GetActorRotation(), TraceTypeQuery1,
+		false, ActorsToIgnore, EDrawDebugTrace::None, HitResult, true);
+
+	if (!bHasWon && HitResult.bBlockingHit && GetVelocity().Size() > 750.f)
+	{
+		Die();
+	}
+}
+
+void ASkateCharacter::Die()
+{
+	StopAllActions();
+	CallResetMenu();
+
+	if (GetMesh() && SkateMesh)
+	{
+		GetMesh()->SetSimulatePhysics(true);
+		SkateMesh->SetSimulatePhysics(true);
+	}
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->StopMovementImmediately();
+	}
+	if (DeathSound)
+	{
+		UGameplayStatics::SpawnSoundAtLocation(GetWorld(), DeathSound, GetActorLocation());
+	}
+	PrimaryActorTick.bCanEverTick = false;
+}
+
+void ASkateCharacter::MovePhysics(const FInputActionValue& Value)
+{
+	FVector2D MovementVector = Value.Get<FVector2D>();
+	ForwardAxis = MovementVector.Y;
+	RightAxis = MovementVector.X;
+	MovementVector.Y = FMath::Clamp(MovementVector.Y, 0, 1);
+	const float CurrentSpeed = GetVelocity().Size();
+
+	Sphere->AddForce(GetActorForwardVector() * RegularSpeed * 110.f * MovementVector.Y);
+
+	float RotationSpeed = RegularSpeed * 1100.f * TurnRate * MovementVector.X;
+	Sphere->AddForce(GetActorRightVector() * RotationSpeed);
 }
 
 FVector ASkateCharacter::GetSimulatedVelocity()

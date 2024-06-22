@@ -12,6 +12,8 @@ struct FInputActionValue;
 class USpringArmComponent;
 class UCameraComponent;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRingCollected);
+
 UCLASS()
 class SKATEBGS_API ASkateCharacter : public ACharacter
 {
@@ -105,6 +107,15 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent)
 	void CallResetMenu();
 
+	UFUNCTION(BlueprintImplementableEvent)
+	void ShowVictoryScreen();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	bool bHasWon = false;
+
+	UPROPERTY(EditAnywhere)
+	USoundBase* DeathSound;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -149,6 +160,8 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UStaticMeshComponent* Sphere;
 
+	FOnRingCollected RingCollected;
+
 	void CollectRing();
 
 private:
@@ -181,4 +194,6 @@ private:
 	int32 RingCounter = 0;
 	void CountDown();
 	void StopAllActions();
+	void TraceCollision();
+	void Die();
 };

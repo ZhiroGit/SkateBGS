@@ -25,12 +25,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sine Parameters");
 	float Period = 5.f; // period = 2pi/K (How long it takes to do a wave, 0 to 1)
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	UStaticMeshComponent* Mesh;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	class USphereComponent* Sphere;
-
 	UPROPERTY(EditAnywhere)
 	class UNiagaraComponent* VFX;
 
@@ -52,6 +46,21 @@ protected:
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UStaticMeshComponent* Mesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	class USphereComponent* Sphere;
+
+	UPROPERTY(EditAnywhere)
+	UMaterialInstance* OnMaterial;
+
+	UPROPERTY(EditAnywhere)
+	UMaterialInstance* OffMaterial;
+
+	void SetRingInactive();
+	void SetRingActive();
 
 private:
 	float RunningTime;
